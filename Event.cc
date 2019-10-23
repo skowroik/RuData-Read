@@ -4,13 +4,28 @@
 #include <cstring>
 #include <algorithm>
 
-#include "Event.h"
 #include "TFile.h"
 #include "TTree.h"
 #include "TClass.h"
 #include "TObject.h"
 
 using namespace std;
+
+struct Event {
+
+ public:
+
+  unsigned short timeStamp [3];         // timestamp 48 bit
+  unsigned short sampleNumber;          // sample number 16 bit
+  unsigned short frameLenght;           // frame lenght 16 bit
+  unsigned short statusHead;            // status 16 bit
+
+  unsigned long energy [36];                 // energy array for every channel, 32 bit each
+  unsigned short statusChan [36];       // status array for every channel, 16 bit each
+
+  unsigned short waveSignal [36][99];       // sample data
+
+};
 
 void readRuData(){
   
@@ -43,12 +58,10 @@ void readRuData(){
     TTree *tree = new TTree("T","An example of a ROOT tree");
 
     file.read( bin , sizeof( bin ) );                                              // reading binary data
-
-    memcpy( &ev->evNumber, bin + 2, sizeof( ev->evNumber ) );                      // coping data to different variables
+    
     memcpy( &ev->timeStamp, bin + 6, sizeof( ev->timeStamp ) );
     memcpy( &ev->sampleNumber, bin + 12, sizeof( ev->sampleNumber ) );
     memcpy( &ev->frameLenght, bin + 14, sizeof( ev->frameLenght ) );
-    memcpy( &ev->digitId, bin + 16, sizeof( ev->digitId ) );
     memcpy( &ev->statusHead, bin + 18, sizeof( ev->statusHead ) );
 
     int i;
@@ -79,7 +92,5 @@ void readRuData(){
   }
 
   //  rootData.Close();
-  
-  //  return 0;
   
 }
