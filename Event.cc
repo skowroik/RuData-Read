@@ -46,6 +46,7 @@ void readRuData(){
   unsigned short data;
 
   TFile rootData("data.root", "RECREATE");
+  TTree *tree = new TTree("T","An example of a ROOT tree");
 
   int count = 0;
   
@@ -53,7 +54,7 @@ void readRuData(){
 
     ev = new Event;
 
-    TTree *tree = new TTree("T","An example of a ROOT tree");
+    
 
     file.read( bin , sizeof( bin ) );                                               // reading binary data
     
@@ -76,10 +77,14 @@ void readRuData(){
       }
       
     }
+
+    string name = "Event";
+    name += to_string( count );
+    char* str = new char[ name.length() + 1 ];
+    strcpy( str, name.c_str( ) );
     
-    tree->Branch( "Event", &ev );
+    tree->Branch( str, &ev );
     tree->Fill( );
-    tree->Write( );
     
     delete ev;                                                                     // clearing the memory
 
@@ -89,6 +94,7 @@ void readRuData(){
     
   }
 
+  tree->Write( );
   //  rootData.Close();
   
 }
