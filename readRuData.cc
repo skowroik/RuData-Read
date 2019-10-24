@@ -74,6 +74,7 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
   float ftrace [100];
   float baseline;
   unsigned short channel;
+  float riseTime;
   
   const int SIZE_CHAN = 36;                                                         // variables to divide binary data
   const int SIZE_HEAD = sizeof( ggpDomHeader );
@@ -86,10 +87,11 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
   TFile *fileOut =  new TFile( outFile.c_str(),"recreate" );                       // to write on root file
   TTree *theTree = new TTree( "ggpData","ggpData" );
   unsigned short *theBuffer;
-  theTree->Branch( "channel",&channel, "channel/s" );
+  theTree->Branch( "channel", &channel, "channel/s" );
   theTree->Branch( "energy", &traceEnergy, "energy/F" );
-  theTree->Branch( "samples",ftrace, "samples[100]/F" );
-  theTree->Branch( "baseline",&baseline, "baseline/F" );
+  theTree->Branch( "samples", ftrace, "samples[100]/F" );
+  theTree->Branch( "baseline", &baseline, "baseline/F" );
+  theTree->Branch( "riseTime", &riseTime, "riseTime/F" );
   
   ggpDomHeader *theEvent_header = new ggpDomHeader;                                 // structs pointers
   ggpSubHeader *theChannel_header = new ggpSubHeader;                                                       
@@ -118,15 +120,32 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
       baseline = 0.;
       
       int k;
+      float maxSig = 0;
       for( k = 0; k < 100; ++k ){
 
 	ftrace[ k ] = float( ( samples[ k ] & 0x3FFF ) ^ 0x2000 );
+	
+	if( maxSig < ftrace[ k ] ) maxSig = ftrace[ k ] ;
 
 	if( k < 15 ) baseline += ftrace[ k ];
 
       }
 
       baseline/=15.;
+      
+      int first = 0;
+      int second = 0;
+      for( k = 0; k < 100; ++k ){
+
+	if( first == 0 && ( ftrace[ k ] - baseline )/( maxSig - baseline ) > 0.1 ) first = k;
+
+        if( second == 0 && ( ftrace[ k ] - baseline )/( maxSig - baseline ) > 0.9 ) second = k;
+
+      }
+
+      riseTime = second - first;
+      
+      
 
       traceEnergy = (float)( theChannel_header->GetEnergy()*1/65536.f );
 
