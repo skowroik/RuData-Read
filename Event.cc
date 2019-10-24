@@ -1,100 +1,145 @@
 #include <iostream>
 #include <fstream>
-#include <vector>
-#include <cstring>
-#include <algorithm>
-
-#include "TFile.h"
-#include "TTree.h"
-#include "TClass.h"
-#include "TObject.h"
+#include <string>
+#include <string.h>
+#include <TFile.h>
+#include <TTree.h>
 
 using namespace std;
 
-struct Event {
+const uint16_t inpMagicMask   = 0xFFF0;       // in AGATA the low nibble identifies the mezzanine
+const uint16_t inpMagicData   = 0xDA00;
+const uint16_t inpMagicWave   = 0xDA50;
+const uint16_t inpMagicSpec   = 0xDA60;
+const uint16_t inpIdleMask    = 0x0008;
+const uint16_t inpPileMask    = 0x0001;
 
-  unsigned short timeStamp [3];           // timestamp 48 bit
-  unsigned short sampleNumber;            // sample number 16 bit
-  unsigned short frameLenght;             // frame lenght 16 bit
-  unsigned short statusHead;              // status 16 bit
+struct ggpDomHeader {
 
-  unsigned long energy [36];              // energy array for every channel, 32 bit each
-  unsigned short statusChan [36];         // status array for every channel, 16 bit each
+  uint16_t key = 0;
+  uint16_t evn_0 = 0;
+  uint16_t evn_1 = 0;
+  uint16_t ts_0 = 0;
+  uint16_t ts_1 = 0;
+  uint16_t ts_2 = 0;
+  uint16_t num_samples = 0;
+  uint16_t total_length = 0;
+  uint16_t crystal_id = 0;
+  uint16_t status = 0;          // bit_0=Pile-up; bit_1=0 bit_2=0; bit_3=Idle-bit; bit_4...bit_15=0
+  uint16_t spare[6] = { 0 };
 
-  unsigned short waveSignal [36][99];     // sample data
-
+  uint32_t GetEvnum()   const { return ( uint32_t(evn_1) << 16 ) | ( uint32_t( evn_0 ) ); }
+  uint64_t GetTstamp()  const { return ( uint64_t( ts_2 ) << 32) | ( uint64_t( ts_1 ) << 16) | ( uint64_t( ts_0 ) ); }
+  uint16_t GetStatus()  const { return ( status & 0xF ); }  // keep only the 4 defined bits
+  uint16_t GetNumSamp() const { return num_samples; }
+  bool     IsData()     const { return (key&inpMagicMask) == inpMagicData; }
+  bool     IsWave()     const { return (key&inpMagicMask) == inpMagicWave; }
+  bool     IsSpec()     const { return (key&inpMagicMask) == inpMagicSpec; }
+  bool     IsIdle()     const { return ((status&inpIdleMask) != 0); }
+  bool     IsPileUp()   const { return ((status&inpPileMask) != 0); }
+  
 };
 
-void readRuData(){
+struct ggpSubHeader {
+
+  uint16_t key = 0;
+  uint16_t ener_0 = 0;
+  uint16_t ener_1 = 0;
+  uint16_t status = 0;
+  uint16_t spare_0 = 0;
+  uint16_t spare_1 = 0;
+  uint16_t compr_type = 0;
+  uint16_t compr_len = 0;
+
+  int  GetEnergy() const { return uint32_t( ener_1 ) << 16 | uint32_t( ener_0 ); }
+  //ggpSubHeader() { memset(this, 0, sizeof(ggpSubHeader)); }
   
-  const int SIZE_CHAN = 36;                                                         // variables to divide binary data
-  const int SIZE_HEAD = 16;
-  const int SIZE_SUB_HEAD = 8;
-  const int SIZE_SUB_DOM = 100;
+};
 
-  int EV_SIZE = SIZE_HEAD + ( ( SIZE_SUB_HEAD + SIZE_SUB_DOM )* ( SIZE_CHAN ) );    // Event size
-  
-  ifstream file;
-  file.open( "rudata_gal-09_ru4_s87_r4036.i1", std::ios::binary );                  // opening the file
+void readRuData( string inFile, string outFile, ULong64_t nEvents ){
 
-  //  ofstream output;
-  //  output.open( "out_prova" );                                                     // an output to print whatever
-
-  Event* ev;                                                                        // creating an Event
-  char bin [ EV_SIZE*2 ];                                                           // char array to contain binary data (multiply by 2 because every word is 16 bit, not 8)
-
-  unsigned short data;
-
-  TFile rootData("data.root", "RECREATE");
-  TTree *tree = new TTree("T","An example of a ROOT tree");
-
-  int count = 0;
-  
-  while( !file.eof() ){
-
-    ev = new Event;
-
+  ifstream inputFile;
+  inputFile.open( inFile.c_str() , std::ios::binary );                // opening the file
+  if( !inputFile.is_open() ){
     
-
-    file.read( bin , sizeof( bin ) );                                               // reading binary data
-    
-    memcpy( &ev->timeStamp, bin + 6, sizeof( ev->timeStamp ) );                     // associating variables to Event struct
-    memcpy( &ev->sampleNumber, bin + 12, sizeof( ev->sampleNumber ) );
-    memcpy( &ev->frameLenght, bin + 14, sizeof( ev->frameLenght ) );
-    memcpy( &ev->statusHead, bin + 18, sizeof( ev->statusHead ) );
-
-    int i;
-    for( i = 0; i < 36; ++i ){                                                      // reading data for each channel
-      
-      memcpy( &ev->energy[i], bin + 32 + ( i*108*2 ), sizeof( ev->energy[i] ) );
-      memcpy( &ev->statusChan[i], bin + 36 + ( i*108*2 ), sizeof( ev->statusChan[i] ) );
-
-      int k;
-      for( k = 1; k < 100; k = k + 1 ){
-
-	memcpy( &ev->waveSignal[i][ ( k  - 1 ) ], bin + 48 + k*2 + ( i*108*2 ), sizeof( ev->waveSignal[i][ ( k  - 1 ) ] ) );
-
-      }
-      
-    }
-
-    string name = "Event";
-    name += to_string( count );
-    char* str = new char[ name.length() + 1 ];
-    strcpy( str, name.c_str( ) );
-    
-    tree->Branch( str, &ev );
-    tree->Fill( );
-    
-    delete ev;                                                                     // clearing the memory
-
-    ++count;
-
-    if( count == 100 ) break;
+    cerr << "Input File not open please check the file name: " << inFile << endl;
+    return;
     
   }
 
-  tree->Write( );
-  //  rootData.Close();
+  unsigned long long timeStamp;             // variables of interest for the analysis
+  float traceEnergy;
+  float energy;
+  unsigned short samples[100] ;
+  float ftrace [100];
+  float baseline;
+  unsigned short channel;
+  
+  const int SIZE_CHAN = 36;                                                         // variables to divide binary data
+  const int SIZE_HEAD = sizeof( ggpDomHeader );
+  const int SIZE_SHEAD = sizeof( ggpSubHeader );
+  const int SIZE_TRACE = 100 * sizeof( uint16_t );
+
+  int EV_SIZE = SIZE_HEAD + ( SIZE_SHEAD + SIZE_TRACE )*( SIZE_CHAN );;                // Event size
+
+
+  TFile *fileOut =  new TFile( outFile.c_str(),"recreate" );                       // to write on root file
+  TTree *theTree = new TTree( "ggpData","ggpData" );
+  unsigned short *theBuffer;
+  theTree->Branch( "channel",&channel, "channel/s" );
+  theTree->Branch( "energy", &traceEnergy, "energy/F" );
+  theTree->Branch( "samples",ftrace, "samples[100]/F" );
+  theTree->Branch( "baseline",&baseline, "baseline/F" );
+  
+  ggpDomHeader *theEvent_header = new ggpDomHeader;                                 // structs pointers
+  ggpSubHeader *theChannel_header = new ggpSubHeader;                                                       
+  char bin [ EV_SIZE ];
+
+  int evCount = 0;
+  
+  while( inputFile.read( bin , sizeof( bin ) ) ){
+
+    if( nEvents > 0 && evCount > nEvents) break;
+
+    theBuffer = ( unsigned short* )bin;
+
+    memcpy( (char*)theEvent_header, bin, sizeof( ggpDomHeader ) );
+
+    if( theEvent_header->IsIdle() || theEvent_header->IsPileUp() ) continue;
+
+    UInt_t ch;
+    for( ch = 0; ch < SIZE_CHAN; ++ch ){                                                      
+
+      memset( samples, 0, 100 );
+      channel = ch;
+
+      memcpy( (char*)theChannel_header, bin + SIZE_HEAD + ch*( SIZE_SHEAD + SIZE_TRACE ), sizeof( ggpSubHeader ) );
+      memcpy( (char*)samples, bin + SIZE_HEAD + ch*( SIZE_SHEAD + SIZE_TRACE ) + SIZE_SHEAD, SIZE_TRACE );
+      baseline = 0.;
+      
+      int k;
+      for( k = 0; k < 100; ++k ){
+
+	ftrace[ k ] = float( ( samples[ k ] & 0x3FFF ) ^ 0x2000 );
+
+	if( k < 15 ) baseline += ftrace[ k ];
+
+      }
+
+      baseline/=15.;
+
+      traceEnergy = (float)( theChannel_header->GetEnergy()*1/65536.f );
+
+      if( abs( traceEnergy ) < 65000 ) theTree->Fill();
+      
+    }
+
+    ++evCount;
+    
+  }
+
+  inputFile.close();
+  theTree->Write();
+  fileOut->Close();
   
 }
