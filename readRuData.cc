@@ -138,7 +138,7 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
       for( k = 0; k < 100; ++k ){
 
 	ftrace[ k ] = float( ( samples[ k ] & 0x3FFF ) ^ 0x2000 );
-	
+
 	if( k > 94 ) max[ ( k - 95 ) ] = ftrace[ k ] ;
 
 	if( k < 15 ) baseline += ftrace[ k ];
@@ -153,14 +153,13 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
       }
       
       maxSig = sumMax/5;
-
+      
       interpolation( ftrace, derivMax, riseTime, baseline, maxSig );
 
-      CFD_filter( ftrace, CFD, CFDzero, baseline, riseTime );   
-
+      CFD_filter( ftrace, CFD, CFDzero, baseline, riseTime );
+ 
       traceEnergy = (float)( theChannel_header->GetEnergy()*1/65536.f );
-      
-      if( std::abs( traceEnergy ) < 65000 ) theTree->Fill();
+      if( std::abs( traceEnergy ) < 65000 ) theTree->Fill( );
       
     }
 
@@ -206,57 +205,72 @@ void interpolation( float* trace, double &derivMax, double &riseTime, float &bas
   for( k = 0; k < 100; ++k){
     data[ k ] = ( (double)trace[ k ] ) - baseline;
   }
-  
+
   TSpline3 *graph = new TSpline3( "wave", 0, 100, data, 100, 0, 0, 0 );
 
-  float deriv [ 5 ] = { 0 };
+  float first, second, third;
+  first = second = third = 0;
+  
   double a = 0;
   double b = 0;
+  
   double start = 0;
   double end = 0;
   bool start_f = 0;
   bool end_f = 0;
+  
   for( k = 1; k < 100; ++k ){
 
     if( data[ k ]/maxSig > 0.3 && !start_f ){
-
+      
       a = data[ k ] - data[ k - 1 ];
       b = ( data[ k ] + data[ k - 1 ] - a*( 2*k - 1 ) )/2;
       start = ( maxSig*0.3 - b )/a;
       start_f = true;
 	  
     }
-
+    
     if( data[ k ]/maxSig > 0.7 && !end_f ){
-
+      
       a = data[ k ] - data[ k - 1 ];
       b = ( data[ k ] + data[ k - 1 ] - a*( 2*k - 1 ) )/2;
       end = ( maxSig*0.7 - b )/a;
       end_f = true;
 
     }
-    
-    int i;
-    for( i = 0; i < 5; ++i ){
-      
-      if( deriv[ i ] < graph->Derivative( k ) ){
 
-	deriv[ i ] = graph->Derivative( k );
-	break;
+    if( k > 15 ){
+    
+      if( first < graph->Derivative( k ) ){
+	
+	third = second;
+	second = first;
+	first = graph->Derivative( k );
+      
+      }
+      
+      else if( second < graph->Derivative( k ) ){
+      
+	third = second;
+	second = graph->Derivative( k );
+	
+      }
+      
+      else if( third < graph->Derivative( k ) ){
+	
+	third = graph->Derivative( k );
+	
       }
 
     }
-
+    
   }
 
-  float sum = 0;
-  int i;
-  for( i = 0; i < 5; ++i ){
-    sum += deriv[ i ];
-  }
-  
-  derivMax = sum/5;
-  riseTime = ( end - start ) ;
+  derivMax = ( first + second + third )/3;
+  if( ( end - start ) > 0 && ( end - start ) < 100 ) riseTime = ( end - start );
+  else riseTime = 0;
+
+  delete graph;
   
 }
     
