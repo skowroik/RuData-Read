@@ -133,19 +133,26 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
       baseline = 0.;
       
       int k;
+      float max [ 5 ] = { 0 };
       float maxSig = 0;
       for( k = 0; k < 100; ++k ){
 
 	ftrace[ k ] = float( ( samples[ k ] & 0x3FFF ) ^ 0x2000 );
 	
-	if( maxSig < ftrace[ k ] ) maxSig = ftrace[ k ] ;
+	if( k > 94 ) max[ ( k - 95 ) ] = ftrace[ k ] ;
 
 	if( k < 15 ) baseline += ftrace[ k ];
 
       }
 
       baseline/=15.;
-      maxSig -= baseline;
+
+      float sumMax = 0;
+      for( k = 0; k < 5; ++k ){
+	sumMax = sumMax + max[ k ] - baseline;
+      }
+      
+      maxSig = sumMax/5;
 
       interpolation( ftrace, derivMax, riseTime, baseline, maxSig );
 
@@ -194,49 +201,47 @@ void CFD_filter( float* trace, float* CFD_trace, float& CFD_zero , float &baseli
 
 void interpolation( float* trace, double &derivMax, double &riseTime, float &baseline, float &maxSig ){
 
-  /*
-  double data[100];
-  for( int k = 0; k < 100; ++k){
-    data[ k ] = ( (double)trace[k] ) - baseline;
+  double data[ 100 ];
+  int k;
+  for( k = 0; k < 100; ++k){
+    data[ k ] = ( (double)trace[ k ] ) - baseline;
   }
   
   TSpline3 *graph = new TSpline3( "wave", 0, 100, data, 100, 0, 0, 0 );
 
   float deriv [ 5 ] = { 0 };
-  int i;
-  for( i = 1; i <= 100; ++i ){
+  double a = 0;
+  double b = 0;
+  double start = 0;
+  double end = 0;
+  bool start_f = 0;
+  bool end_f = 0;
+  for( k = 1; k < 100; ++k ){
 
-    int k;
-    for( k = 0; k < 5; ++k ){
-      
-      if( deriv[ k ] < graph->Derivative( i ) ){
+    if( data[ k ]/maxSig > 0.3 && !start_f ){
 
-	deriv[ k ] = graph->Derivative( i );
-	break;
-      }
-
+      a = data[ k ] - data[ k - 1 ];
+      b = ( data[ k ] + data[ k - 1 ] - a*( 2*k - 1 ) )/2;
+      start = ( maxSig*0.3 - b )/a;
+      start_f = true;
+	  
     }
 
-  }
-  */
+    if( data[ k ]/maxSig > 0.7 && !end_f ){
 
-  double data[50];
-  for( int k = 0; k < 50; ++k){
-    data[ k ] = ( (double)trace[ k*2 ] ) - baseline;
-  }
-  
-  TSpline3 *graph = new TSpline3( "wave", 0, 50, data, 50, 0, 0, 0 );
+      a = data[ k ] - data[ k - 1 ];
+      b = ( data[ k ] + data[ k - 1 ] - a*( 2*k - 1 ) )/2;
+      end = ( maxSig*0.7 - b )/a;
+      end_f = true;
 
-  float deriv [ 3 ] = { 0 };
-  int i;
-  for( i = 1; i <= 50; ++i ){
-
-    int k;
-    for( k = 0; k < 3; ++k ){
+    }
+    
+    int i;
+    for( i = 0; i < 5; ++i ){
       
-      if( deriv[ k ] < graph->Derivative( i ) ){
+      if( deriv[ i ] < graph->Derivative( k ) ){
 
-	deriv[ k ] = graph->Derivative( i );
+	deriv[ i ] = graph->Derivative( k );
 	break;
       }
 
@@ -245,19 +250,12 @@ void interpolation( float* trace, double &derivMax, double &riseTime, float &bas
   }
 
   float sum = 0;
-  for( i = 0; i < 3; ++i ){
-
+  int i;
+  for( i = 0; i < 5; ++i ){
     sum += deriv[ i ];
-
   }
-
-  double start;
-  double end;
-
-  end = ( (double)graph->FindX( maxSig*0.9 ) + (double)graph->FindX( maxSig*0.8 ) )/2;
-  start = ( (double)graph->FindX( maxSig*0.1 ) + (double)graph->FindX( maxSig*0.2 ) )/2;
   
-  derivMax = sum/3;
+  derivMax = sum/5;
   riseTime = ( end - start ) ;
   
 }
