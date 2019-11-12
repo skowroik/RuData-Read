@@ -63,10 +63,38 @@ void CFD_filter( float* trace, float* CFD_trace, float &CFD_zero, float &baselin
 
 void interpolation( float* trace, double &derivMax, double &riseTime, float &baseline, float &maxSig );
 
-void readRuData( string inFile, string outFile, ULong64_t nEvents ){
+void readRuData( char* inFile, ULong64_t nEvents );
 
+void loopData( char* in, ULong64_t nEvents ){
+  
+  const char* ext = ".i1";
+  const char* inDir = in;
+
+  char* dir = gSystem->ExpandPathName( inDir );
+  void* dirp = gSystem->OpenDirectory( dir );
+
+  const char* entry;
+  const char* filename[ 100 ];
+  Int_t l = 0;
+  TString str;
+
+  while( ( entry = (char*)gSystem->GetDirEntry( dirp ) ) ){
+    str = entry;
+    if( str.EndsWith(ext) )
+      filename[ l++ ] = gSystem->ConcatFileName( dir, entry );
+  }
+
+  for (Int_t a = 0; a < l; ++a) readRuData( (char*)filename[ a ], nEvents );
+  
+}
+
+void readRuData( char* inFile, ULong64_t nEvents ){
+
+  string file1( inFile );
+  string file2 = file1.substr( 0 , file1.size( ) - 3 );
+  string file = file2 + ".root";
   ifstream inputFile;
-  inputFile.open( inFile.c_str() , std::ios::binary );                // opening the file
+  inputFile.open( inFile , std::ios::binary );                // opening the file
   if( !inputFile.is_open() ){
     
     cerr << "Input File not open please check the file name: " << inFile << endl;
@@ -94,7 +122,7 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
   int EV_SIZE = SIZE_HEAD + ( SIZE_SHEAD + SIZE_TRACE )*( SIZE_CHAN );;                // Event size
 
 
-  TFile *fileOut =  new TFile( outFile.c_str(),"recreate" );                       // to write on root file
+  TFile *fileOut =  new TFile( file.c_str( ),"recreate" );                       // to write on root file
   TTree *theTree = new TTree( "ggpData","ggpData" );
   unsigned short *theBuffer;
   theTree->Branch( "channel", &channel, "channel/s" );
@@ -123,6 +151,7 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
     if( theEvent_header->IsIdle() || theEvent_header->IsPileUp() ) continue;
 
     UInt_t ch;
+    bool found = false;
     for( ch = 0; ch < SIZE_CHAN; ++ch ){                                                      
 
       memset( samples, 0, 100 );
@@ -159,12 +188,14 @@ void readRuData( string inFile, string outFile, ULong64_t nEvents ){
       CFD_filter( ftrace, CFD, CFDzero, baseline, riseTime );
  
       traceEnergy = (float)( theChannel_header->GetEnergy()*1/65536.f );
+      if( traceEnergy > 80 && channel == 1 ) found = true;
+      else found = false;
       if( std::abs( traceEnergy ) < 65000 ) theTree->Fill( );
       
     }
 
     derivMax = 0;
-    ++evCount;
+    if( found ) ++evCount;
     
   }
 
